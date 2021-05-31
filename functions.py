@@ -4,9 +4,9 @@ import os
 import tarfile
 from six.moves import urllib
 
-def fetch_housing_data(housing_url=None, housing_path=None):
+def fetch_housing_data(housing_url='', housing_path=''):
 
-    if housing_path & housing_url:
+    if len(housing_path) != 0 | len(housing_url) != 0:
 
         if not os.path.isdir(housing_path):
             os.makedirs(housing_path)
@@ -18,4 +18,5 @@ def fetch_housing_data(housing_url=None, housing_path=None):
         housing_tgz.close()
 
     else:
-        print("Input Data URL source and target dir.")
+        print("Input Data URL source and/or target dir.")
+
