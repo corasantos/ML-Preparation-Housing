@@ -20,3 +20,6 @@ def fetch_housing_data(housing_url='', housing_path=''):
     else:
         print("Input Data URL source and/or target dir.")
 
+class my_train_test_split:
+
+    def __init__():
