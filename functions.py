@@ -6,79 +6,6 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 
-def stratifyC1D(datainput, stratFeat=None ,binmethod='LinearBins', nbins=7, logtransform=False, adjust=False, graphs=True):
-
-    data = datainput.copy()
-
-    if stratFeat:
-
-        #Perform log-transform
-        if logtransform:
-
-            data['log_'+stratFeat] = np.log(1+data[stratFeat])
-            stratFeat = 'log_' + stratFeat
-
-
-        #Apply chogen binning method for defining categories
-        if binmethod=='LinearBins':
-
-            cats = np.linspace(min(data[stratFeat]),
-                               max(data[stratFeat]),
-                               nbins)
-
-
-        if binmethod=='QuantileBins':
-            
-            quantiles = np.linspace(0,100,nbins)
-            cats = np.percentile(data[stratFeat],quantiles) 
-
-
-        #Classificating each instance - stratfeat min distance from cats
-        data[stratFeat+'_cat'] = np.argmin(abs(np.repeat(cats,len(data)).reshape((len(cats),len(data))) - data[stratFeat].values),0)
-
-
-        #Agrupa as duas primeiras e as duas categoria
-        data[stratFeat+'_adjust_cat'] = data[stratFeat+'_cat'].replace(0,1).replace(nbins-1,nbins-2)
-
-        #Plotting
-        if graphs:
-
-            plt.figure(figsize=(10,5))
-            plt.subplot(1,3,1)
-            data[stratFeat].hist()
-            for cat in cats:
-                plt.axvline(cat,color='k',linestyle='--')
-            plt.title('Original Distribution')
-
-            plt.subplot(1,3,2)
-            data[stratFeat+'_cat'].hist()
-            plt.title('Categorical Distribution')
-
-            plt.subplot(1,3,3)
-            data[stratFeat+'_adjust_cat'].hist()
-            plt.title('Categorical Distribution Ajusted')
-
-
-        #Choosing ajusted
-        if adjust:
-            
-            data = data.drop(axis=1,labels=[stratFeat+'_cat']).rename(columns={stratFeat+'_adjust_cat':stratFeat+'_cat'})
-            cats = cats[1:-1]
-       
-        else:
-
-            data = data.drop(axis=1,labels=[stratFeat+'_adjust_cat'])
-
-    
-        return data, cats
-
-    
-    else:
-        print('Input feature to use as base for stratification.')
-
-
-
-
 def create_sets(datainput,stratFeat=None):
 
     from sklearn.model_selection import StratifiedShuffleSplit
@@ -117,10 +44,10 @@ def calculate_errors(datainput, train_set, test_set, strat_train_set, strat_test
 
     propDF['train_test_err'] = np.abs(propDict['train'] - propDict['test'])/(propDict['train']+propDict['test'])*2
     propDF['strat_train_test_err'] = np.abs(propDict['strat_train'] - propDict['strat_test'])/(propDict['strat_train']+propDict['strat_test'])*2
-    propDF['train_datainput_err'] = np.abs(propDict['train'] - propDict['datainput'])/propDict['datainput']
-    propDF['strat_train_datainput_err'] = np.abs(propDict['strat_train'] - propDict['datainput'])/propDict['datainput']
-    propDF['test_datainput_err'] = np.abs(propDict['test'] - propDict['datainput'])/propDict['datainput']
-    propDF['strat_test_datainput_err'] = np.abs(propDict['strat_test'] - propDict['datainput'])/propDict['datainput']
+    propDF['train_data_err'] = np.abs(propDict['train'] - propDict['datainput'])/propDict['datainput']
+    propDF['strat_train_data_err'] = np.abs(propDict['strat_train'] - propDict['datainput'])/propDict['datainput']
+    propDF['test_data_err'] = np.abs(propDict['test'] - propDict['datainput'])/propDict['datainput']
+    propDF['strat_test_data_err'] = np.abs(propDict['strat_test'] - propDict['datainput'])/propDict['datainput']
 
     propDF = propDF.sort_index()
 
@@ -140,13 +67,124 @@ def plot_errors(propDF):
     ax2.set_ylabel('Relative error in participation')  # we already handled the x-label with ax1
     ax2.plot(propDF.train_test_err,label='train_test_err')
     ax2.plot(propDF.strat_train_test_err,label='strat_train_test_err')
-    ax2.plot(propDF.train_datainput_err,label='train_datainput_err')
-    ax2.plot(propDF.strat_train_datainput_err,label='strat_train_datainput_err')
-    ax2.plot(propDF.test_datainput_err,label='test_datainput_err')
-    ax2.plot(propDF.strat_test_datainput_err,label='strat_test_datainput_err')
+    ax2.plot(propDF.train_data_err,label='train_data_err')
+    ax2.plot(propDF.strat_train_data_err,label='strat_train_data_err')
+    ax2.plot(propDF.test_data_err,label='test_data_err')
+    ax2.plot(propDF.strat_test_data_err,label='strat_test_data_err')
     plt.legend(bbox_to_anchor=(1.08, 1), loc='upper left')
     plt.title('Impact of stratifying')
     #ax2.tick_params(axis='y', labelcolor=color)
 
     fig.tight_layout()  # otherwise the right y-label is slightly clipped
     plt.show()
+
+
+def grouplessfreqcats(datainput, stratFeat='strat_cat'):
+
+    data = datainput.copy()
+
+    # Transforms the category from 0-len(cats)*len(cats1) to frequency of each 
+    replaceDict = dict(data[stratFeat].value_counts() / len(data))
+    data[stratFeat+'1'] = data[stratFeat].replace(replaceDict)
+
+    aux = data[[stratFeat,stratFeat+'1']].drop_duplicates().sort_values(by=stratFeat+'1')
+    aux['cumulative_prob'] = aux[stratFeat+'1'].cumsum()
+    aux_cp = aux.copy()
+
+    # Iterates over reclassification to group less likely instances
+    while aux['cumulative_prob'].iloc[0] < 0.5/(len(cats)*len(cats1)):
+
+        # Replicates the second less likely category to the first less likely
+        aux = aux.sort_values(by=stratFeat+'1').reset_index(drop=True)
+        aux['strat_cat_update'] = aux[stratFeat]
+        aux['strat_cat_update'].iloc[0] = aux['strat_cat_update'].iloc[1]
+        
+        replaceDict = dict(aux[[stratFeat,'strat_cat_update']].values)
+        data[stratFeat] = data[stratFeat].replace(replaceDict)
+
+        # Recalculate frequency categories
+        replaceDict = dict(data[stratFeat].value_counts() / len(data))
+        data[stratFeat+'1'] = data[stratFeat].replace(replaceDict)
+
+        aux = data[[stratFeat,stratFeat+'1']].drop_duplicates().sort_values(by=stratFeat+'1')
+        aux['cumulative_prob'] = aux[stratFeat+'1'].cumsum()
+
+    plt.figure()
+    plt.bar(range(len(aux)),aux[stratFeat+'1'])
+    plt.bar(range(len(aux_cp)),aux_cp[stratFeat+'1'])
+
+    return data
+
+
+def stratifyC1D(datainput, stratFeat=None ,binmethod='LinearBins', nbins=7, logtransform=False, adjust=False, graphs=True):
+
+    data = datainput.copy()
+
+    if stratFeat:
+
+        #Perform log-transform
+        if logtransform:
+
+            data['log_'+stratFeat] = np.log(1+data[stratFeat])
+            stratFeat = 'log_' + stratFeat
+
+
+        #Apply chogen binning method for defining categories
+        if binmethod=='LinearBins':
+
+            cats = np.linspace(min(data[stratFeat]),
+                               max(data[stratFeat]),
+                               nbins)
+
+
+        if binmethod=='QuantileBins':
+            
+            quantiles = np.linspace(0,100,nbins)
+            cats = np.percentile(data[stratFeat],quantiles) 
+
+
+        #Classificating each instance - stratfeat min distance from cats
+        data[stratFeat+'_cat'] = np.argmin(abs(np.repeat(cats,len(data)).reshape((len(cats),len(data))) - data[stratFeat].values),0)
+
+
+        #Group the less frequent categories
+        if adjust:
+            data = grouplessfreqcats(data,stratFeat=stratFeat)
+            cats = np.linspace()
+
+        #Plotting
+        if graphs:
+
+            plt.figure(figsize=(10,5))
+            plt.subplot(1,3,1)
+            data[stratFeat].hist()
+            for cat in cats:
+                plt.axvline(cat,color='k',linestyle='--')
+            plt.title('Original Distribution')
+
+            plt.subplot(1,3,2)
+            data[stratFeat+'_cat'].hist()
+            plt.title('Categorical Distribution')
+
+            plt.subplot(1,3,3)
+            data[stratFeat+'_adjust_cat'].hist()
+            plt.title('Categorical Distribution Ajusted')
+
+
+        #Choosing ajusted
+        if adjust:
+            
+            data = data.drop(axis=1,labels=[stratFeat+'_cat']).rename(columns={stratFeat+'_adjust_cat':stratFeat+'_cat'})
+            cats = cats[1:-1]
+       
+        else:
+
+            data = data.drop(axis=1,labels=[stratFeat+'_adjust_cat'])
+
+    
+        return data, cats
+
+    
+    else:
+        print('Input feature to use as base for stratification.')
+
